@@ -1,0 +1,39 @@
+seed: 7
+output_dir: outputs/v1_dummy
+
+data:
+  name: dummy_scene
+  image_size: 64
+  length: 64
+  batch_size: 4
+  num_workers: 0
+  hidden_proposals: 1
+
+model:
+  encoder_channels: [32, 64, 96]
+  hidden_dim: 96
+  hidden_proposals: 1
+
+teacher:
+  name: oracle
+
+optim:
+  lr: 0.001
+  weight_decay: 0.0001
+
+train:
+  epochs: 2
+  device: cpu
+  log_every: 5
+  max_steps_per_epoch: 8
+
+loss:
+  visible_geometry: 1.0
+  visible_confidence: 0.2
+  visible_render: 0.5
+  hidden_geometry: 0.8
+  hidden_ranking: 0.2
+  hidden_sparse: 0.05
+  novel_view: 1.0
+  teacher_consistency: 0.3
+  boundary: 0.1

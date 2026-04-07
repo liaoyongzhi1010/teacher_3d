@@ -1,0 +1,13 @@
+.venv/
+__pycache__/
+*.pyc
+outputs/
+*.pt
+*.pth
+studentSplat.pdf
+*.egg-info/
+configs/generated/
+paper_re10k_final_pipeline.nohup.log
+.DS_Store
+third_party/vggt/
+single-view

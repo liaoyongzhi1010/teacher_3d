@@ -1,0 +1,56 @@
+seed: 7
+output_dir: outputs/v1_re10k_vggt_local
+
+data:
+  name: re10k
+  split: train
+  data_root: /home/data/RealEstate10K
+  metadata_root: /home/data/RealEstate10K
+  split_file:
+  image_height: 256
+  image_width: 384
+  batch_size: 2
+  num_workers: 0
+  min_frame_gap: 5
+  max_frame_gap: 30
+  max_scenes: 4
+  max_samples: 8
+  samples_per_scene: 2
+  skip_first_metadata_line: true
+  teacher_target_root: /root/3d/teacher/outputs/vggt_packets
+  require_teacher_targets: false
+
+model:
+  encoder_channels: [32, 64, 96]
+  hidden_dim: 96
+  hidden_proposals: 1
+
+teacher:
+  name: vggt_precomputed
+  repo_path: /root/3d/teacher/third_party/vggt
+  hf_repo: facebook/VGGT-1B
+  weights_path:
+  conf_threshold: 1.5
+  depth_margin: 0.05
+
+optim:
+  lr: 0.001
+  weight_decay: 0.0001
+
+train:
+  epochs: 1
+  device: cpu
+  log_every: 1
+  max_steps_per_epoch: 2
+
+loss:
+  visible_geometry: 1.0
+  visible_confidence: 0.2
+  visible_render: 0.5
+  hidden_geometry: 0.8
+  hidden_ranking: 0.2
+  hidden_sparse: 0.05
+  novel_view: 1.0
+  teacher_consistency: 0.3
+  boundary: 0.1
+  visibility_aware_teacher: true
