@@ -18,6 +18,11 @@ def _as_int(value):
 
 
 def main(args) -> None:
+    if args.num_shards < 1:
+        raise ValueError(f"num_shards must be >= 1, got {args.num_shards}")
+    if args.shard_index < 0 or args.shard_index >= args.num_shards:
+        raise ValueError(f"shard_index must be in [0, {args.num_shards}), got {args.shard_index}")
+
     config = load_config(args.config)
     config.data.require_teacher_targets = False
     dataset = build_dataset(config)
@@ -33,8 +38,14 @@ def main(args) -> None:
     runner = VGGTTeacherRunner(teacher_cfg)
 
     limit = len(dataset) if args.limit < 0 else min(args.limit, len(dataset))
-    stats = []
+    saved = 0
+    skipped = 0
+    assigned = 0
     for index in range(limit):
+        if index % args.num_shards != args.shard_index:
+            continue
+        assigned += 1
+
         sample = dataset[index]
         scene_id = sample["scene_id"]
         split = sample["split"]
@@ -42,7 +53,14 @@ def main(args) -> None:
         target_timestamp = _as_int(sample["target_timestamp"])
         out_path = pathlib.Path(config.data.teacher_target_root) / split / scene_id / f"{context_timestamp}_{target_timestamp}.pt"
         if out_path.exists() and not args.overwrite:
-            print(json.dumps({"index": index, "status": "skip_exists", "path": str(out_path)}))
+            skipped += 1
+            print(json.dumps({
+                "index": index,
+                "status": "skip_exists",
+                "shard_index": args.shard_index,
+                "num_shards": args.num_shards,
+                "path": str(out_path),
+            }))
             continue
 
         predictions = runner.predict_pair(
@@ -68,18 +86,26 @@ def main(args) -> None:
             target_timestamp=target_timestamp,
             packet=packet,
         )
-        row = {
+        saved += 1
+        print(json.dumps({
             "index": index,
             "status": "saved",
+            "shard_index": args.shard_index,
+            "num_shards": args.num_shards,
             "scene_id": scene_id,
             "context_timestamp": context_timestamp,
             "target_timestamp": target_timestamp,
             "path": str(path),
-        }
-        stats.append(row)
-        print(json.dumps(row))
+        }))
 
-    print(json.dumps({"saved": len(stats), "limit": limit}, sort_keys=True))
+    print(json.dumps({
+        "saved": saved,
+        "skipped": skipped,
+        "assigned": assigned,
+        "limit": limit,
+        "shard_index": args.shard_index,
+        "num_shards": args.num_shards,
+    }, sort_keys=True))
 
 
 if __name__ == "__main__":
@@ -88,5 +114,7 @@ if __name__ == "__main__":
     parser.add_argument("--limit", type=int, default=8)
     parser.add_argument("--device", default="cuda")
     parser.add_argument("--overwrite", action="store_true")
+    parser.add_argument("--shard-index", type=int, default=0)
+    parser.add_argument("--num-shards", type=int, default=1)
     args = parser.parse_args()
     main(args)
