@@ -1,0 +1,81 @@
+seed: 7
+output_dir: outputs/paper_re10k_vggt_baseline_full
+
+data:
+  name: re10k
+  split: train
+  data_root: /home/data/RealEstate10K
+  metadata_root: /home/data/RealEstate10K
+  split_file:
+  image_height: 256
+  image_width: 384
+  batch_size: 2
+  num_workers: 0
+  min_frame_gap: 5
+  max_frame_gap: 30
+  max_scenes: -1
+  max_samples: -1
+  samples_per_scene: 8
+  skip_first_metadata_line: true
+  teacher_target_root: /root/3d/teacher/outputs/vggt_packets_paper_rawsupport
+  require_teacher_targets: true
+
+model:
+  encoder_channels: [32, 64, 96]
+  hidden_dim: 96
+  hidden_proposals: 1
+  enable_hidden_branch: true
+  enable_separate_render_alpha: true
+
+teacher:
+  name: vggt_precomputed
+  repo_path: /root/3d/teacher/third_party/vggt
+  hf_repo: facebook/VGGT-1B
+  weights_path:
+  conf_threshold: 1.5
+  depth_margin: 0.05
+  enable_hidden_layered_targets: true
+  hidden_target_boundary_radius: 1
+  hidden_target_boundary_threshold: 0.05
+  hidden_target_boundary_rel_threshold: 0.02
+  hidden_layered_boundary_min_score: 0.30
+  hidden_layered_local_gap_max: 0.12
+  hidden_layered_use_raw_support: true
+  hidden_layered_raw_confidence_scale: 3.0
+  hidden_layered_raw_count_scale: 4.0
+
+optim:
+  lr: 0.001
+  weight_decay: 0.0001
+
+train:
+  epochs: 3
+  device: cuda
+  log_every: 64
+  max_steps_per_epoch: 13084
+
+loss:
+  visible_geometry: 1.0
+  visible_confidence: 0.2
+  visible_render: 0.5
+  hidden_geometry: 1.4
+  hidden_ranking: 0.3
+  hidden_sparse: 0.0
+  hidden_coverage: 1.0
+  hidden_conf_margin: 0.5
+  hidden_conf_margin_min: 0.10
+  hidden_local_support: 0.0
+  hidden_deep_support: 0.0
+  hidden_ambiguous_band: 0.0
+  hidden_ambiguous_low_prob: 0.10
+  hidden_ambiguous_high_prob: 0.35
+  hidden_interior_negative: 0.0
+  novel_view: 1.0
+  teacher_consistency: 1.0
+  boundary: 0.1
+  visibility_aware_teacher: true
+  visible_pos_weight: 1.0
+  visible_focal_gamma: 0.0
+  hidden_pos_weight: 20.0
+  hidden_focal_gamma: 0.0
+  hidden_gap_min: 0.05
