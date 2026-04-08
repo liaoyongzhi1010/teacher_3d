@@ -31,14 +31,36 @@ def move_batch(batch, device: torch.device, non_blocking: bool = False):
 
 
 def resolve_amp_dtype(device: torch.device, requested: str) -> torch.dtype | None:
-    if device.type != "cuda":
+    if device.type != 'cuda':
         return None
     name = str(requested).lower()
-    if name == "bfloat16":
+    if name == 'bfloat16':
         return torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
-    if name == "float16":
+    if name == 'float16':
         return torch.float16
-    raise ValueError(f"Unsupported amp_dtype: {requested}")
+    raise ValueError(f'Unsupported amp_dtype: {requested}')
+
+
+def build_optimizer(model, config):
+    base_lr = float(config.optim.lr)
+    weight_decay = float(config.optim.weight_decay)
+    backbone_lr_scale = float(getattr(config.optim, 'backbone_lr_scale', 1.0))
+    backbone_params = []
+    other_params = []
+    for name, parameter in model.named_parameters():
+        if not parameter.requires_grad:
+            continue
+        if name.startswith('encoder.backbone.'):
+            backbone_params.append(parameter)
+        else:
+            other_params.append(parameter)
+
+    parameter_groups = []
+    if other_params:
+        parameter_groups.append({'params': other_params, 'lr': base_lr})
+    if backbone_params:
+        parameter_groups.append({'params': backbone_params, 'lr': base_lr * backbone_lr_scale})
+    return torch.optim.AdamW(parameter_groups, weight_decay=weight_decay)
 
 
 def train_one_epoch(
@@ -66,24 +88,24 @@ def train_one_epoch(
         teacher_targets = teacher(batch)
         optimizer.zero_grad(set_to_none=True)
         with torch.autocast(device_type=device.type, dtype=amp_dtype, enabled=autocast_enabled):
-            outputs = model(batch["image"])
+            outputs = model(batch['image'])
             losses = loss_computer(outputs, batch, teacher_targets)
         if scaler.is_enabled():
-            scaler.scale(losses["total"]).backward()
+            scaler.scale(losses['total']).backward()
             scaler.step(optimizer)
             scaler.update()
         else:
-            losses["total"].backward()
+            losses['total'].backward()
             optimizer.step()
         step_time = time.perf_counter() - start_time
         step_metrics = {name: float(value.detach().cpu()) for name, value in losses.items()}
-        step_metrics["step_time"] = step_time
-        step_metrics["samples_per_sec"] = float(batch["image"].shape[0]) / max(step_time, 1e-6)
+        step_metrics['step_time'] = step_time
+        step_metrics['samples_per_sec'] = float(batch['image'].shape[0]) / max(step_time, 1e-6)
         metrics.append(step_metrics)
         if step % log_every == 0:
-            print(json.dumps({"step": step, **step_metrics}, sort_keys=True))
+            print(json.dumps({'step': step, **step_metrics}, sort_keys=True))
     if not metrics:
-        return {"total": 0.0}
+        return {'total': 0.0}
     summary = {key: sum(item[key] for item in metrics) / max(len(metrics), 1) for key in metrics[0]}
     return summary
 
@@ -95,26 +117,22 @@ def main(config_path: str) -> None:
     set_seed(int(config.seed))
 
     device = torch.device(config.train.device)
-    if device.type == "cuda":
-        torch.backends.cudnn.benchmark = bool(getattr(config.train, "cudnn_benchmark", True))
-        if hasattr(torch, "set_float32_matmul_precision"):
-            torch.set_float32_matmul_precision(str(getattr(config.train, "float32_matmul_precision", "high")))
+    if device.type == 'cuda':
+        torch.backends.cudnn.benchmark = bool(getattr(config.train, 'cudnn_benchmark', True))
+        if hasattr(torch, 'set_float32_matmul_precision'):
+            torch.set_float32_matmul_precision(str(getattr(config.train, 'float32_matmul_precision', 'high')))
     loader = build_dataloader(config, shuffle=True)
     teacher = build_teacher(config)
     model = Teacher3DV1(config).to(device)
     loss_computer = LossComputer(config)
-    optimizer = torch.optim.AdamW(
-        model.parameters(),
-        lr=float(config.optim.lr),
-        weight_decay=float(config.optim.weight_decay),
-    )
+    optimizer = build_optimizer(model, config)
 
-    amp_enabled = bool(getattr(config.train, "amp", device.type == "cuda"))
-    amp_dtype = resolve_amp_dtype(device, getattr(config.train, "amp_dtype", "bfloat16")) if amp_enabled else None
-    scaler_enabled = bool(amp_enabled and amp_dtype == torch.float16 and device.type == "cuda")
+    amp_enabled = bool(getattr(config.train, 'amp', device.type == 'cuda'))
+    amp_dtype = resolve_amp_dtype(device, getattr(config.train, 'amp_dtype', 'bfloat16')) if amp_enabled else None
+    scaler_enabled = bool(amp_enabled and amp_dtype == torch.float16 and device.type == 'cuda')
     scaler = torch.amp.GradScaler(device.type, enabled=scaler_enabled)
-    non_blocking = bool(getattr(config.train, "non_blocking", device.type == "cuda"))
-    max_steps_value = int(getattr(config.train, "max_steps_per_epoch", -1))
+    non_blocking = bool(getattr(config.train, 'non_blocking', device.type == 'cuda'))
+    max_steps_value = int(getattr(config.train, 'max_steps_per_epoch', -1))
     max_steps = None if max_steps_value <= 0 else max_steps_value
 
     history = []
@@ -133,11 +151,11 @@ def main(config_path: str) -> None:
             scaler=scaler,
             non_blocking=non_blocking,
         )
-        summary["epoch"] = epoch
+        summary['epoch'] = epoch
         history.append(summary)
-        print(json.dumps({"epoch_summary": summary}, sort_keys=True))
+        print(json.dumps({'epoch_summary': summary}, sort_keys=True))
 
-    torch.save(model.state_dict(), output_dir / "model.pt")
-    with (output_dir / "history.json").open("w", encoding="utf-8") as handle:
+    torch.save(model.state_dict(), output_dir / 'model.pt')
+    with (output_dir / 'history.json').open('w', encoding='utf-8') as handle:
         json.dump(history, handle, indent=2)
-    print(f"saved model to {output_dir / 'model.pt'}")
+    print(f'saved model to {output_dir / "model.pt"}')

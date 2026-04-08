@@ -5,7 +5,7 @@ from torch import nn
 
 from teacher3d.models.branches import HiddenBranch, VisibleBranch
 from teacher3d.models.decoder import LayeredGaussianDecoder
-from teacher3d.models.encoder import ImageEncoder
+from teacher3d.models.encoder import build_image_encoder
 
 
 class ConfidenceCalibrator(nn.Module):
@@ -78,8 +78,7 @@ class ConfidenceCalibrator(nn.Module):
 class Teacher3DV1(nn.Module):
     def __init__(self, config) -> None:
         super().__init__()
-        channels = list(config.model.encoder_channels)
-        hidden_dim = config.model.hidden_dim
+        hidden_dim = int(config.model.hidden_dim)
         self.hidden_dim = hidden_dim
         self.hidden_proposals = int(getattr(config.model, 'hidden_proposals', 1))
         self.enable_hidden_branch = bool(getattr(config.model, 'enable_hidden_branch', True))
@@ -101,8 +100,9 @@ class Teacher3DV1(nn.Module):
             getattr(config.model, 'enable_dual_confidence_temperature', False)
         )
 
-        self.encoder = ImageEncoder(channels)
-        self.bridge = nn.Conv2d(channels[-1], hidden_dim, kernel_size=1)
+        self.encoder = build_image_encoder(config)
+        encoder_out_channels = int(getattr(self.encoder, 'out_channels', hidden_dim))
+        self.bridge = nn.Identity() if encoder_out_channels == hidden_dim else nn.Conv2d(encoder_out_channels, hidden_dim, kernel_size=1)
         self.visible_branch = VisibleBranch(
             hidden_dim,
             enable_confidence_bias=self.enable_visible_confidence_bias,
